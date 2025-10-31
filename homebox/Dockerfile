@@ -21,124 +21,8 @@ RUN \
 # Create patched nuxt.config.ts file
 FROM alpine:latest AS nuxt-config-patch
 COPY --from=git-clone /tmp/homebox/frontend/nuxt.config.ts /tmp/nuxt.config.ts.orig
-RUN \
-    cat > /tmp/nuxt.config.ts << 'ENDOFFILE'
-import { defineNuxtConfig } from "nuxt/config";
-
-// Get base path from environment variable (for Home Assistant Ingress)
-const basePath = process.env.BASE_PATH || process.env.NUXT_BASE_URL || '/';
-
-// https://v3.nuxtjs.org/api/configuration/nuxt.config
-export default defineNuxtConfig({
-  ssr: false,
-
-  // Set router base for ingress support
-  app: {
-    baseURL: basePath,
-    head: {
-      script: [{ src: "/set-theme.js" }],
-    },
-  },
-
-  router: {
-    base: basePath,
-  },
-
-  components: {
-    dirs: [],
-  },
-
-  build: {
-    transpile: ["vue-i18n"],
-  },
-
-  modules: [
-    "@nuxtjs/tailwindcss",
-    "@pinia/nuxt",
-    "@vueuse/nuxt",
-    "@vite-pwa/nuxt",
-    "unplugin-icons/nuxt",
-    "shadcn-nuxt",
-    "@nuxt/eslint",
-  ],
-
-  eslint: {
-    config: {},
-  },
-
-  nitro: {
-    devProxy: {
-      "/api": {
-        target: "http://localhost:7745/api",
-        ws: true,
-        changeOrigin: true,
-      },
-    },
-  },
-
-  css: ["@/assets/css/main.css"],
-
-  pwa: {
-    workbox: {
-      navigateFallbackDenylist: [/^\/api/],
-      cleanupOutdatedCaches: true,
-      runtimeCaching: [
-        {
-          urlPattern: /^\/api/,
-          handler: "NetworkFirst",
-          method: "GET",
-          options: {
-            cacheName: "api-cache",
-            cacheableResponse: { statuses: [0, 200] },
-            expiration: { maxAgeSeconds: 60 * 60 * 24 },
-          },
-        },
-      ],
-    },
-    registerType: "autoUpdate",
-    injectRegister: "script",
-    injectManifest: {
-      swSrc: "sw.js",
-    },
-    devOptions: {
-      enabled: false,
-    },
-    manifest: {
-      name: "Homebox",
-      short_name: "Homebox",
-      description: "Home Inventory App",
-      theme_color: "#5b7f67",
-      start_url: basePath + "/home",
-      icons: [
-        {
-          src: "pwa-192x192.png",
-          sizes: "192x192",
-          type: "image/png",
-        },
-        {
-          src: "pwa-512x512.png",
-          sizes: "512x512",
-          type: "image/png",
-        },
-        {
-          src: "pwa-512x512.png",
-          sizes: "512x512",
-          type: "image/png",
-          purpose: "any maskable",
-        },
-      ],
-    },
-  },
-  postcss: {
-    plugins: {
-      tailwindcss: {},
-      autoprefixer: {},
-    },
-  },
-
-  compatibilityDate: "2024-11-29",
-});
-ENDOFFILE
+# Copy our patched nuxt.config.ts file
+COPY nuxt.config.ts.patch /tmp/nuxt.config.ts
 
 # Build frontend dependencies
 FROM public.ecr.aws/docker/library/node:lts-alpine AS frontend-deps
@@ -172,19 +56,24 @@ FROM public.ecr.aws/docker/library/golang:alpine AS builder
 ARG BUILD_ARCH
 
 # Map Home Assistant architecture to Go architecture
-RUN \
-    if [ "${BUILD_ARCH}" = "amd64" ]; then export GOARCH="amd64"; \
-    elif [ "${BUILD_ARCH}" = "aarch64" ]; then export GOARCH="arm64"; \
-    else export GOARCH="amd64"; fi && \
-    echo "Building for GOARCH=${GOARCH}"
-
 ENV GOOS=linux
 ENV CGO_ENABLED=0
+# Set GOARCH based on BUILD_ARCH and save to file for later use
+RUN \
+    if [ "${BUILD_ARCH}" = "amd64" ]; then \
+        echo "amd64" > /tmp/goarch.txt; \
+    elif [ "${BUILD_ARCH}" = "aarch64" ]; then \
+        echo "arm64" > /tmp/goarch.txt; \
+    else \
+        echo "amd64" > /tmp/goarch.txt; \
+    fi
 
-RUN apk update && \
+RUN \
+    GOARCH_VALUE=$(cat /tmp/goarch.txt) && \
+    apk update && \
     apk upgrade && \
     apk add --no-cache git build-base gcc g++ && \
-    if [ "${GOARCH}" != "arm" ] && [ "${GOARCH}" != "riscv64" ]; then apk --no-cache add libwebp libavif libheif libjxl; fi
+    if [ "${GOARCH_VALUE}" != "arm" ] && [ "${GOARCH_VALUE}" != "riscv64" ]; then apk --no-cache add libwebp libavif libheif libjxl; fi
 
 WORKDIR /go/src/app
 
@@ -197,15 +86,17 @@ RUN rm -rf ./app/api/public ./app/api/static/public
 COPY --from=frontend-builder /app/.output/public ./app/api/static/public
 
 # Build Go binary
+# Note: GOARCH is set as ENV above, read it dynamically
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    if [ "${GOARCH}" = "arm" ] || [ "${GOARCH}" = "riscv64" ]; then \
-        go build \
+    GOARCH_VALUE=$(cat /tmp/goarch.txt) && \
+    if [ "${GOARCH_VALUE}" = "arm" ] || [ "${GOARCH_VALUE}" = "riscv64" ]; then \
+        CGO_ENABLED=0 GOOS=linux GOARCH=${GOARCH_VALUE} go build \
             -ldflags "-s -w" \
             -tags nodynamic \
             -o /go/bin/api \
             -v ./app/api/*.go; \
     else \
-        go build \
+        CGO_ENABLED=0 GOOS=linux GOARCH=${GOARCH_VALUE} go build \
             -ldflags "-s -w" \
             -o /go/bin/api \
             -v ./app/api/*.go; \
