@@ -26,10 +26,25 @@ if [ ! -x /usr/bin/homebox ]; then
     bashio::exit.nok "Homebox binary not executable"
 fi
 
+# Get Ingress entry path from Home Assistant
+# This is the base path that Ingress uses (e.g., /api/hassio_ingress/<addon-id>/)
+ingress_entry=$(bashio::addon.ingress_entry 2>/dev/null || echo "")
+if [ -n "${ingress_entry}" ]; then
+    bashio::log.info "Ingress entry path: ${ingress_entry}"
+    # Set BASE_PATH environment variable for our custom-built Homebox
+    # This will be used by the Nuxt.js app (patched to read this at runtime)
+    export BASE_PATH="${ingress_entry}"
+    export NUXT_BASE_URL="${ingress_entry}"
+else
+    bashio::log.warning "Could not get Ingress entry path, using default '/'"
+    export BASE_PATH="/"
+fi
+
 # Start Homebox
 bashio::log.info "Starting Homebox..."
 bashio::log.info "Data directory: ${data_dir}"
 bashio::log.info "Port: 7745"
+bashio::log.info "Base path: ${BASE_PATH}"
 
 # Change to data directory so homebox creates database and files there
 cd "${data_dir}"
@@ -47,6 +62,10 @@ cd "${data_dir}"
 # --database-sqlite-path - Full path to SQLite database
 # --options-allow-analytics false - Disable analytics
 # --options-github-release-check false - Disable GitHub release checks in addon context
+#
+# Note: Homebox's Nuxt.js frontend may not support base path configuration
+# since it's a compiled binary. The Ingress proxy should handle path rewriting,
+# but if static assets still fail, this may require upstream changes to Homebox.
 exec /usr/bin/homebox \
     --web-host "0.0.0.0" \
     --web-port 7745 \
