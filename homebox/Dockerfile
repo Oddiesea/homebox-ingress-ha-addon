@@ -29,7 +29,10 @@ FROM public.ecr.aws/docker/library/node:lts-alpine AS frontend-deps
 WORKDIR /app
 RUN npm install -g pnpm
 COPY --from=git-clone /tmp/homebox/frontend/package.json /tmp/homebox/frontend/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# Use cache mount for pnpm store to speed up builds and reduce QEMU overhead
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    --mount=type=cache,target=/root/.pnpm-state \
+    pnpm install --frozen-lockfile --prefer-offline
 
 # Build frontend with patched config
 FROM public.ecr.aws/docker/library/node:lts-alpine AS frontend-builder
@@ -43,7 +46,10 @@ COPY --from=frontend-deps /app/node_modules ./node_modules
 # For now, build with empty base path and we'll handle routing in the Go backend
 ENV BASE_PATH="/"
 ENV NUXT_BASE_URL="/"
-RUN pnpm build
+# Use cache mount for build cache to speed up and reduce QEMU issues
+RUN --mount=type=cache,target=/app/.nuxt \
+    --mount=type=cache,target=/app/.output \
+    pnpm build
 
 # Go dependencies stage
 FROM public.ecr.aws/docker/library/golang:alpine AS builder-dependencies

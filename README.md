@@ -1,6 +1,6 @@
 # Homebox Home Assistant Add-on
 
-![Homebox Icon](https://raw.githubusercontent.com/Oddiesea/homebox-ingress-ha-addon/main/homebox/icon.png)
+<img src="https://raw.githubusercontent.com/Oddiesea/homebox-ingress-ha-addon/main/homebox/icon.png" alt="Homebox Icon" width="64" height="64">
 
 A Home Assistant add-on for [Homebox](https://github.com/sysadminsmedia/homebox), an inventory and organization system built for the Home User.
 
