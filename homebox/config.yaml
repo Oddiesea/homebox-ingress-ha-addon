@@ -1,6 +1,7 @@
 name: Homebox
 slug: homebox
 description: Inventory and organization system built for the Home User
+version: latest
 url: https://github.com/sysadminsmedia/homebox
 arch:
   - aarch64
@@ -19,5 +20,5 @@ ports_description:
   "7745/tcp": "Web interface (Ingress)"
 options: {}
 schema: {}
-image: ghcr.io/{username}/home-assistant-homebox-{arch}
+image: ghcr.io/oddiesea/home-assistant-homebox-{arch}
 
