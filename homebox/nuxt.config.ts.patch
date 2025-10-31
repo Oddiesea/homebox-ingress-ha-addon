@@ -17,6 +17,10 @@ export default defineNuxtConfig({
     transpile: ["vue-i18n"],
   },
 
+  vite: {
+    base: basePath,
+  },
+
   modules: [
     "@nuxtjs/tailwindcss",
     "@pinia/nuxt",
@@ -41,7 +45,8 @@ export default defineNuxtConfig({
     },
   },
 
-  // Set router base for ingress support (must be after nitro)
+  // Set base URL for ingress support (must be after nitro)
+  // Using "./" generates relative paths that work with any Ingress base path
   app: {
     baseURL: basePath,
     head: {
@@ -49,8 +54,11 @@ export default defineNuxtConfig({
     },
   },
 
+  // Also set router base for SPA mode
   router: {
-    base: basePath,
+    options: {
+      base: basePath,
+    },
   },
 
   css: ["@/assets/css/main.css"],

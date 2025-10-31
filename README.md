@@ -43,9 +43,6 @@ Currently, no additional configuration options are required. The add-on uses sen
 - Port: 7745 (used for ingress, not exposed externally)
 - Data directory: `/data` (mapped to `/config/homebox/`)
 
-### Known Issues
-
-**Static Asset 404 Errors:** If you see 404 errors for `/_nuxt/...` files in the browser console, this is a known limitation. Homebox's Nuxt.js frontend is compiled into the binary and doesn't support base path configuration needed for Home Assistant Ingress. The application may still function, but some assets might not load correctly. This would need to be fixed upstream in the Homebox project by adding support for configurable base paths.
 
 ## Support
 
