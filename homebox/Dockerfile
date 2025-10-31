@@ -10,14 +10,14 @@ ARG BUILD_ARCH=amd64
 # hadolint ignore=DL3003
 RUN \
     apk add --no-cache --virtual .build-dependencies \
-        git=~2.46 \
-        go=~1.24 \
-        nodejs=~20 \
-        npm=~10 \
+        git \
+        go \
+        nodejs \
+        npm \
     \
     && apk add --no-cache \
-        ca-certificates=~20250605 \
-        tzdata=~2025a \
+        ca-certificates \
+        tzdata \
     \
     && mkdir -p /build \
     && cd /build \
