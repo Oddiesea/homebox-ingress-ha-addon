@@ -72,7 +72,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BUILD_FROM=ghcr.io/hassio-addons/base:14
+            BUILD_FROM=ghcr.io/hassio-addons/base:14.2.2
             BUILD_ARCH=${{ matrix.arch }}
             BUILD_DATE=${{ github.event.head_commit.timestamp || github.event.pull_request.head.repo.pushed_at || github.event.repository.pushed_at }}
             BUILD_DESCRIPTION=Homebox - Inventory and organization system
