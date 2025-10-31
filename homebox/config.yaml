@@ -11,6 +11,7 @@ ingress: true
 ingress_port: 7745
 panel_icon: mdi:package-variant
 panel_title: Homebox
+init: false
 startup: services
 boot: auto
 map:
