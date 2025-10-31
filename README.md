@@ -7,7 +7,7 @@ A Home Assistant add-on for [Homebox](https://github.com/sysadminsmedia/homebox)
 ## Features
 
 - **Ingress Support** - Secure access through Home Assistant's built-in ingress feature
-- **Multi-Architecture** - Supports amd64, aarch64 (arm64), and armv7 architecture
+- **Multi-Architecture** - Supports amd64 and aarch64 (arm64) architectures
 - **Automatic Updates** - Built from the latest Homebox source on each build
 
 ## Installation

@@ -34,7 +34,6 @@ jobs:
         arch:
           - aarch64
           - amd64
-          - armv7
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
