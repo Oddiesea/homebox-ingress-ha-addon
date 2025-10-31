@@ -1,0 +1,5 @@
+#!/usr/bin/with-contenv sh
+# Finish script for homebox service
+# Exit with code 0 to allow s6 to restart the service if needed
+exit 0
+

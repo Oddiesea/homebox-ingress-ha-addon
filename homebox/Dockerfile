@@ -43,8 +43,10 @@ RUN \
 # Copy root filesystem
 COPY rootfs /
 
-# Ensure service run script is executable
+# Ensure service scripts are executable
 RUN chmod +x /etc/services.d/homebox/run 2>/dev/null || true
+RUN chmod +x /etc/services.d/homebox/finish 2>/dev/null || true
+RUN chmod +x /run.sh 2>/dev/null || true
 
 # Build arguments
 ARG BUILD_ARCH

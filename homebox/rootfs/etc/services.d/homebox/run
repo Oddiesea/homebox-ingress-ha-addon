@@ -4,11 +4,9 @@
 # This runs Homebox using HA Ingress
 # ==============================================================================
 
-declare data_dir
-data_dir="/data"
-
 # Create data directory if it doesn't exist
-mkdir -p "${data_dir}"
+data_dir="/data"
+mkdir -p "${data_dir}" || bashio::exit.nok "Could not create data directory"
 
 # Set timezone if configured
 if bashio::config.has_value 'timezone'; then
@@ -20,12 +18,12 @@ fi
 # Verify homebox binary exists and is executable
 if [ ! -f /usr/bin/homebox ]; then
     bashio::log.error "Homebox binary not found at /usr/bin/homebox"
-    exit 1
+    bashio::exit.nok "Homebox binary missing"
 fi
 
 if [ ! -x /usr/bin/homebox ]; then
     bashio::log.error "Homebox binary is not executable"
-    exit 1
+    bashio::exit.nok "Homebox binary not executable"
 fi
 
 # Start Homebox
