@@ -46,9 +46,6 @@ COPY rootfs /
 # Ensure service run script is executable
 RUN chmod +x /etc/services.d/homebox/run 2>/dev/null || true
 
-# Ensure legacy run.sh is executable (for legacy-services support)
-RUN chmod +x /run.sh 2>/dev/null || true
-
 # Build arguments
 ARG BUILD_ARCH
 ARG BUILD_DATE

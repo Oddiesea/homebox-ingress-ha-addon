@@ -4,11 +4,7 @@
 # This runs Homebox using HA Ingress
 # ==============================================================================
 
-# Don't exit on error immediately - let bashio handle logging
-set +o errexit
-
 declare data_dir
-
 data_dir="/data"
 
 # Create data directory if it doesn't exist
@@ -33,16 +29,13 @@ if [ ! -x /usr/bin/homebox ]; then
 fi
 
 # Start Homebox
-bashio::log.info "Starting Homebox with data directory: ${data_dir}"
-bashio::log.info "Homebox will listen on port 7745"
+bashio::log.info "Starting Homebox..."
+bashio::log.info "Data directory: ${data_dir}"
+bashio::log.info "Port: 7745"
 
-# Change to data directory (homebox might expect to run from there)
-cd "${data_dir}"
-
-# Run homebox in foreground - use exec to replace shell process
-# This ensures the process stays running as the service
+# Run homebox - use exec to replace shell process with homebox
+# This ensures homebox runs as the service process
 exec /usr/bin/homebox \
     --data "${data_dir}" \
-    --port 7745 \
-    2>&1
+    --port 7745
 
