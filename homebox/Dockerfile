@@ -6,53 +6,33 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Setup base
 ARG BUILD_ARCH=amd64
+ARG HOMEBOX_VERSION=0.21.0
 
+# Download and install Homebox binary
 # hadolint ignore=DL3003
 RUN \
-    apk add --no-cache --virtual .build-dependencies \
-        git \
-        go \
-        nodejs \
-        npm \
-    \
-    && apk add --no-cache \
+    apk add --no-cache \
         ca-certificates \
+        curl \
         tzdata \
     \
-    && mkdir -p /build \
-    && cd /build \
-    && git clone --depth 1 https://github.com/sysadminsmedia/homebox.git . \
-    && cd frontend \
-    && npm ci \
-    && npm run build \
-    && cd ../backend
-
-# Build Homebox
-ARG BUILD_ARCH
-# hadolint ignore=DL3003
-RUN \
-    cd /build/backend \
-    && GOARCH_VAL=$( \
+    && ARCH_VAL=$( \
         if [ "${BUILD_ARCH}" = "aarch64" ]; then echo "arm64"; \
         elif [ "${BUILD_ARCH}" = "amd64" ]; then echo "amd64"; \
-        elif [ "${BUILD_ARCH}" = "armhf" ] || [ "${BUILD_ARCH}" = "armv7" ]; then echo "arm"; \
-        elif [ "${BUILD_ARCH}" = "i386" ]; then echo "386"; \
+        elif [ "${BUILD_ARCH}" = "armhf" ] || [ "${BUILD_ARCH}" = "armv7" ]; then echo "armv7"; \
         else echo "${BUILD_ARCH}"; \
         fi) \
-    && go mod download \
-    && CGO_ENABLED=0 GOOS=linux GOARCH="${GOARCH_VAL}" \
-        go build \
-            -ldflags="-s -w -X 'github.com/sysadminsmedia/homebox/backend/internal/config.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)' -X 'github.com/sysadminsmedia/homebox/backend/internal/config.gitCommit=$(git rev-parse --short HEAD)'" \
-            -o /usr/bin/homebox \
-            ./cmd/homebox
-
-# Cleanup
-# hadolint ignore=DL3003
-RUN \
-    apk del --no-cache --purge .build-dependencies \
-    && rm -rf /build \
-    && rm -rf /root/.cache \
-    && rm -rf /root/.go
+    \
+    && curl -f -L -o /tmp/homebox.tar.gz \
+        "https://github.com/sysadminsmedia/homebox/releases/download/v${HOMEBOX_VERSION}/homebox_${HOMEBOX_VERSION}_linux_${ARCH_VAL}.tar.gz" \
+    \
+    && tar -xzf /tmp/homebox.tar.gz -C /tmp \
+    \
+    && mv /tmp/homebox /usr/bin/homebox \
+    \
+    && chmod +x /usr/bin/homebox \
+    \
+    && rm -rf /tmp/homebox.tar.gz /tmp/homebox_*
 
 # Copy root filesystem
 COPY rootfs /
