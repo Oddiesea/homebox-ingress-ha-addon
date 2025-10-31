@@ -31,9 +31,30 @@ bashio::log.info "Starting Homebox..."
 bashio::log.info "Data directory: ${data_dir}"
 bashio::log.info "Port: 7745"
 
+# Change to data directory so homebox creates database and files there
+cd "${data_dir}"
+
 # Run homebox - use exec to replace shell process with homebox
 # This ensures homebox runs as the service process
+#
+# Key flags:
+# --web-host "0.0.0.0" - Bind to all interfaces (required for ingress)
+# --web-port 7745 - Port to listen on
+# --mode production - Use production mode
+# --log-level info - Set logging level
+# --log-format text - Use text format for logs (better for addon logs)
+# --storage-prefix-path - Where to store uploaded files
+# --database-sqlite-path - Full path to SQLite database
+# --options-allow-analytics false - Disable analytics
+# --options-github-release-check false - Disable GitHub release checks in addon context
 exec /usr/bin/homebox \
-    --data "${data_dir}" \
-    --port 7745
+    --web-host "0.0.0.0" \
+    --web-port 7745 \
+    --mode production \
+    --log-level info \
+    --log-format text \
+    --storage-prefix-path "${data_dir}/.data" \
+    --database-sqlite-path "${data_dir}/.data/homebox.db?_pragma=busy_timeout=999&_pragma=journal_mode=WAL&_fk=1&_time_format=sqlite" \
+    --options-allow-analytics false \
+    --options-github-release-check false
 
