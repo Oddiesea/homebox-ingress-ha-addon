@@ -44,14 +44,18 @@ COPY --from=git-clone /tmp/homebox/frontend ./
 COPY --from=nuxt-config-patch /tmp/nuxt.config.ts ./nuxt.config.ts
 # Copy node_modules from dependencies stage
 COPY --from=frontend-deps /app/node_modules ./node_modules
-# Note: We build with BASE_PATH set to allow the config to read it
-# The base path will be determined at runtime by Home Assistant Ingress
-# For now, build with empty base path and we'll handle routing in the Go backend
-ENV BASE_PATH="/"
-ENV NUXT_BASE_URL="/"
+# Build with relative base path "./" so assets work with any Ingress path
+# This allows the app to work regardless of the exact Ingress path at runtime
+ENV BASE_PATH="./"
+ENV NUXT_BASE_URL="./"
 # Prepare Nuxt (generates .nuxt directory and tsconfig)
 # Then build the frontend
-RUN pnpm exec nuxt prepare && pnpm build
+# Optimize for QEMU emulation: reduce parallel workers and increase memory limits
+RUN \
+    export NODE_OPTIONS="--max-old-space-size=4096" && \
+    export NITRO_PRESET=node && \
+    pnpm exec nuxt prepare && \
+    NODE_OPTIONS="--max-old-space-size=4096" pnpm build
 
 # Go dependencies stage
 FROM public.ecr.aws/docker/library/golang:alpine AS builder-dependencies

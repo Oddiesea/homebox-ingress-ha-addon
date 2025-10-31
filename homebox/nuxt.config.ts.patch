@@ -1,7 +1,9 @@
 import { defineNuxtConfig } from "nuxt/config";
 
 // Get base path from environment variable (for Home Assistant Ingress)
-const basePath = process.env.BASE_PATH || process.env.NUXT_BASE_URL || '/';
+// Use relative path "./" to work with any base path at runtime
+// This is better for Ingress since we don't know the exact path at build time
+const basePath = process.env.BASE_PATH || process.env.NUXT_BASE_URL || './';
 
 // https://v3.nuxtjs.org/api/configuration/nuxt.config
 export default defineNuxtConfig({
@@ -43,7 +45,7 @@ export default defineNuxtConfig({
   app: {
     baseURL: basePath,
     head: {
-      script: [{ src: "/set-theme.js" }],
+      script: [{ src: "set-theme.js" }],
     },
   },
 
@@ -83,7 +85,7 @@ export default defineNuxtConfig({
       short_name: "Homebox",
       description: "Home Inventory App",
       theme_color: "#5b7f67",
-      start_url: `${basePath}home`.replace(/\/+/g, '/'),
+      start_url: `home`,
       icons: [
         {
           src: "pwa-192x192.png",
