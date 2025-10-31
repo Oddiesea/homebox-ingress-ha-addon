@@ -1,38 +1,44 @@
 ARG BUILD_FROM=ghcr.io/hassio-addons/base:14.2.2
+
+# Multi-stage build: Extract binary from official Homebox image
+ARG BUILD_ARCH=amd64
+ARG HOMEBOX_VERSION=latest
+
+# Map Home Assistant architecture to HomeBox image architecture
+# hadolint ignore=DL3006
+FROM ghcr.io/sysadminsmedia/homebox:${HOMEBOX_VERSION} AS homebox-source
+
+# Find and prepare binary in source stage
+RUN \
+    if [ -f /app/api ]; then \
+        cp /app/api /tmp/homebox; \
+    elif [ -f /homebox ]; then \
+        cp /homebox /tmp/homebox; \
+    elif [ -f /usr/bin/homebox ]; then \
+        cp /usr/bin/homebox /tmp/homebox; \
+    else \
+        find / -name "*homebox*" -o -name "api" -type f -executable 2>/dev/null | grep -E "(homebox|api)" | head -1 | xargs -I {} cp {} /tmp/homebox || \
+        (echo "Could not find homebox binary in image" && exit 1); \
+    fi
+
+# Final stage: Use HA base image
 FROM ${BUILD_FROM}
 
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Setup base
-ARG BUILD_ARCH=amd64
-ARG HOMEBOX_VERSION=0.21.0
+# Copy binary from homebox-source stage
+COPY --from=homebox-source --chown=root:root /tmp/homebox /usr/bin/homebox
 
-# Download and install Homebox binary
+# Ensure binary is executable
+RUN chmod +x /usr/bin/homebox
+
+# Install runtime dependencies
 # hadolint ignore=DL3003
 RUN \
     apk add --no-cache \
         ca-certificates \
-        curl \
-        tzdata \
-    \
-    && ARCH_VAL=$( \
-        if [ "${BUILD_ARCH}" = "aarch64" ]; then echo "arm64"; \
-        elif [ "${BUILD_ARCH}" = "amd64" ]; then echo "amd64"; \
-        elif [ "${BUILD_ARCH}" = "armhf" ] || [ "${BUILD_ARCH}" = "armv7" ]; then echo "armv7"; \
-        else echo "${BUILD_ARCH}"; \
-        fi) \
-    \
-    && curl -f -L -o /tmp/homebox.tar.gz \
-        "https://github.com/sysadminsmedia/homebox/releases/download/v${HOMEBOX_VERSION}/homebox_${HOMEBOX_VERSION}_linux_${ARCH_VAL}.tar.gz" \
-    \
-    && tar -xzf /tmp/homebox.tar.gz -C /tmp \
-    \
-    && mv /tmp/homebox /usr/bin/homebox \
-    \
-    && chmod +x /usr/bin/homebox \
-    \
-    && rm -rf /tmp/homebox.tar.gz /tmp/homebox_*
+        tzdata
 
 # Copy root filesystem
 COPY rootfs /
