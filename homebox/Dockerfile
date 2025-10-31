@@ -38,18 +38,20 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 FROM public.ecr.aws/docker/library/node:lts-alpine AS frontend-builder
 WORKDIR /app
 RUN npm install -g pnpm
+# Copy frontend source files first
 COPY --from=git-clone /tmp/homebox/frontend ./
+# Overwrite with our patched nuxt.config.ts that supports base paths
 COPY --from=nuxt-config-patch /tmp/nuxt.config.ts ./nuxt.config.ts
+# Copy node_modules from dependencies stage
 COPY --from=frontend-deps /app/node_modules ./node_modules
 # Note: We build with BASE_PATH set to allow the config to read it
 # The base path will be determined at runtime by Home Assistant Ingress
 # For now, build with empty base path and we'll handle routing in the Go backend
 ENV BASE_PATH="/"
 ENV NUXT_BASE_URL="/"
-# Use cache mount for build cache to speed up and reduce QEMU issues
-RUN --mount=type=cache,target=/app/.nuxt \
-    --mount=type=cache,target=/app/.output \
-    pnpm build
+# Prepare Nuxt (generates .nuxt directory and tsconfig)
+# Then build the frontend
+RUN pnpm exec nuxt prepare && pnpm build
 
 # Go dependencies stage
 FROM public.ecr.aws/docker/library/golang:alpine AS builder-dependencies
