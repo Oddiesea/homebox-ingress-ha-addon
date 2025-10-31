@@ -1,9 +1,9 @@
 name: Homebox
 slug: homebox
-description: Inventory and organization system built for the Home User
+description: 'Inventory and organization system built for the Home User'
 version: latest
 url: https://github.com/sysadminsmedia/homebox
-logo: https://raw.githubusercontent.com/Oddiesea/homebox-ingress-ha-addon/main/homebox/icon.png
+logo: https://raw.githubusercontent.com/Oddiesea/homebox-ingress-ha-addon/main/homebox/logo.png
 arch:
   - aarch64
   - amd64
