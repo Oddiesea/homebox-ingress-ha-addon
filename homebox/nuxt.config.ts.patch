@@ -50,7 +50,11 @@ export default defineNuxtConfig({
   app: {
     baseURL: basePath,
     head: {
-      script: [{ src: "set-theme.js" }],
+      script: [
+        { src: "set-theme.js" },
+        // Ingress path fix: Use window.__HASS_INGRESS_PATH__ for static resources
+        { src: "ingress-fix.js", defer: true },
+      ],
     },
   },
 

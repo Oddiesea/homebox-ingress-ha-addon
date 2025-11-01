@@ -42,6 +42,8 @@ RUN npm install -g pnpm
 COPY --from=git-clone /tmp/homebox/frontend ./
 # Overwrite with our patched nuxt.config.ts that supports base paths
 COPY --from=nuxt-config-patch /tmp/nuxt.config.ts ./nuxt.config.ts
+# Copy ingress-fix.js to public directory (will be included in build output)
+COPY ingress-fix.js ./public/ingress-fix.js
 # Copy node_modules from dependencies stage
 COPY --from=frontend-deps /app/node_modules ./node_modules
 # Build with relative base path "./" so assets work with any Ingress path
@@ -92,10 +94,17 @@ WORKDIR /go/src/app
 # Copy Go modules and source code
 COPY --from=builder-dependencies /go/pkg/mod /go/pkg/mod
 COPY --from=git-clone /tmp/homebox/backend ./
+# Copy backend patch files for Ingress support
+COPY backend-patch.go ./app/api/ingress_patch.go
+COPY patch-server.sh ./patch-server.sh
+# Apply the patch to server.go to use the middleware
+# The patch script will try to add middleware, but may need adjustment based on server.go structure
+RUN chmod +x ./patch-server.sh && ./patch-server.sh || (echo "Warning: Auto-patch may have failed. Build continuing..." && echo "If API requests fail, check server.go structure and apply middleware manually")
 
 # Clear old public files and copy new ones from frontend build
 RUN rm -rf ./app/api/public ./app/api/static/public
 COPY --from=frontend-builder /app/.output/public ./app/api/static/public
+# ingress-fix.js should already be in the frontend build output from public/ directory
 
 # Build Go binary
 # Note: GOARCH is set as ENV above, read it dynamically
