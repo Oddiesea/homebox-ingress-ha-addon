@@ -26,18 +26,65 @@ func ingressPathMiddleware(next http.Handler) http.Handler {
 			// Normalize: ensure it ends with /
 			normalizedIngressPath = strings.TrimSuffix(ingressPath, "/") + "/"
 			
-			// Remove trailing slash for path stripping
+			// Remove trailing slash for path stripping (we'll try both with and without)
 			ingressPathForStripping := strings.TrimSuffix(ingressPath, "/")
 			
-			// If the request path starts with the ingress path, strip it
-			if strings.HasPrefix(r.URL.Path, ingressPathForStripping) {
-				r.URL.Path = strings.TrimPrefix(r.URL.Path, ingressPathForStripping)
+			// ALWAYS strip the ingress path from the request URL when X-Ingress-Path header is present
+			// The ingress proxy sends requests with the full ingress path in the URL
+			// We need to strip it so the backend routes correctly
+			originalPath := r.URL.Path
+			
+			// Normalize both paths for comparison (remove trailing slashes)
+			normalizedRequestPath := strings.TrimSuffix(originalPath, "/")
+			normalizedIngressPath := strings.TrimSuffix(ingressPath, "/")
+			
+			// Check if the request path starts with the ingress path
+			if normalizedRequestPath == normalizedIngressPath {
+				// Exact match - request is for the ingress root
+				r.URL.Path = "/"
+			} else if strings.HasPrefix(normalizedRequestPath, normalizedIngressPath+"/") {
+				// Request path starts with ingress path followed by /
+				// Strip the ingress path and the following /
+				r.URL.Path = strings.TrimPrefix(normalizedRequestPath, normalizedIngressPath+"/")
 				if r.URL.Path == "" {
 					r.URL.Path = "/"
+				} else if !strings.HasPrefix(r.URL.Path, "/") {
+					// Ensure it starts with /
+					r.URL.Path = "/" + r.URL.Path
 				}
-				// Also update RawPath if set
-				if r.URL.RawPath != "" && strings.HasPrefix(r.URL.RawPath, ingressPathForStripping) {
-					r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, ingressPathForStripping)
+			} else if strings.HasPrefix(originalPath, ingressPathForStripping) {
+				// Fallback: try direct prefix match
+				r.URL.Path = strings.TrimPrefix(originalPath, ingressPathForStripping)
+				if r.URL.Path == "" {
+					r.URL.Path = "/"
+				} else if !strings.HasPrefix(r.URL.Path, "/") {
+					r.URL.Path = "/" + r.URL.Path
+				}
+			} else if strings.HasPrefix(originalPath, ingressPath) {
+				// Fallback: try with trailing slash from header
+				r.URL.Path = strings.TrimPrefix(originalPath, ingressPath)
+				if r.URL.Path == "" {
+					r.URL.Path = "/"
+				} else if !strings.HasPrefix(r.URL.Path, "/") {
+					r.URL.Path = "/" + r.URL.Path
+				}
+			}
+			
+			// Also update RawPath if set (for encoded paths)
+			if r.URL.RawPath != "" {
+				originalRawPath := r.URL.RawPath
+				if strings.HasPrefix(originalRawPath, ingressPathForStripping+"/") {
+					r.URL.RawPath = strings.TrimPrefix(originalRawPath, ingressPathForStripping+"/")
+					if r.URL.RawPath == "" {
+						r.URL.RawPath = "/"
+					}
+				} else if strings.HasPrefix(originalRawPath, ingressPathForStripping) {
+					r.URL.RawPath = strings.TrimPrefix(originalRawPath, ingressPathForStripping)
+					if r.URL.RawPath == "" {
+						r.URL.RawPath = "/"
+					}
+				} else if strings.HasPrefix(originalRawPath, ingressPath) {
+					r.URL.RawPath = strings.TrimPrefix(originalRawPath, ingressPath)
 					if r.URL.RawPath == "" {
 						r.URL.RawPath = "/"
 					}
