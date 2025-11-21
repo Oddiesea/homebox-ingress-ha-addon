@@ -55,8 +55,9 @@ export default defineNuxtConfig({
     head: {
       script: [
         { src: "set-theme.js" },
-        // Ingress path fix: Will be updated by ingress plugin
-        { src: "ingress-fix.js", defer: true },
+        // Ingress path fix: Must run synchronously before Nuxt initializes
+        // to strip ingress path from URL before router sees it
+        { src: "ingress-fix.js" },
       ],
     },
   },

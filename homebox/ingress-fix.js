@@ -39,6 +39,19 @@
     return; // Not in Ingress mode or already at root
   }
   
+  // Strip ingress path from current URL before Nuxt router initializes
+  // This prevents the router from trying to match the ingress path as a route
+  const currentPath = window.location.pathname;
+  if (currentPath.startsWith(ingressPath)) {
+    const pathWithoutIngress = currentPath.substring(ingressPath.length - 1); // -1 to keep leading /
+    if (pathWithoutIngress !== currentPath && pathWithoutIngress !== ingressPath) {
+      // Update URL without triggering navigation (before Nuxt initializes)
+      const newUrl = pathWithoutIngress + window.location.search + window.location.hash;
+      window.history.replaceState(null, '', newUrl);
+      console.log('[Ingress Fix] Stripped ingress path from URL:', currentPath, '->', pathWithoutIngress);
+    }
+  }
+  
   // Fix asset paths using ingress path
   function fixPaths() {
     // Fix existing script and link tags with absolute paths
