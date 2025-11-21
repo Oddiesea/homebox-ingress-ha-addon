@@ -50,7 +50,7 @@ bashio::log.info "Base path: ${BASE_PATH}"
 cd "${data_dir}"
 
 # Run homebox - use exec to replace shell process with homebox
-# This ensures homebox runs as the service process
+# This ensures homebox runs as the service process and s6 can manage it properly
 #
 # Key flags:
 # --web-host "0.0.0.0" - Bind to all interfaces (required for ingress)
@@ -62,10 +62,6 @@ cd "${data_dir}"
 # --database-sqlite-path - Full path to SQLite database
 # --options-allow-analytics false - Disable analytics
 # --options-github-release-check false - Disable GitHub release checks in addon context
-#
-# Note: Homebox's Nuxt.js frontend may not support base path configuration
-# since it's a compiled binary. The Ingress proxy should handle path rewriting,
-# but if static assets still fail, this may require upstream changes to Homebox.
 exec /usr/bin/homebox \
     --web-host "0.0.0.0" \
     --web-port 7745 \

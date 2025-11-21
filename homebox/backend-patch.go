@@ -20,6 +20,8 @@ func ingressPathMiddleware(next http.Handler) http.Handler {
 		ingressPath := r.Header.Get("X-Ingress-Path")
 		normalizedIngressPath := ""
 		
+		// Always call next handler - don't block any requests
+		// If ingress path is present, we'll handle it, otherwise pass through
 		if ingressPath != "" {
 			// Normalize: ensure it ends with /
 			normalizedIngressPath = strings.TrimSuffix(ingressPath, "/") + "/"
@@ -54,9 +56,11 @@ func ingressPathMiddleware(next http.Handler) http.Handler {
 				ingressPath:    normalizedIngressPath,
 			}
 			next.ServeHTTP(htmlRW, r)
-			// Always flush buffer after handler completes (even if empty, to ensure headers are written)
+			// Always flush buffer after handler completes
+			// This ensures headers are written and any buffered content is sent
 			htmlRW.flush()
 		} else {
+			// For non-HTML requests or requests without ingress, pass through directly
 			next.ServeHTTP(w, r)
 		}
 	})
@@ -101,23 +105,73 @@ func (h *htmlResponseWriter) WriteHeader(code int) {
 	}
 	h.statusCode = code
 	h.headerWritten = true
+	// Initialize buffer if not already done
 	if h.buffer == nil {
 		h.buffer = &bytes.Buffer{}
 	}
+	// Don't write headers to underlying writer yet - wait until flush()
+	// This allows us to modify Content-Length if needed
 }
 
 func (h *htmlResponseWriter) Write(b []byte) (int, error) {
 	if h.buffer == nil {
 		h.buffer = &bytes.Buffer{}
 	}
-	if !h.headerWritten {
-		h.WriteHeader(http.StatusOK)
-	}
+	// Don't auto-write headers here - let the handler do it
+	// This prevents issues with Content-Length being set incorrectly
 	return h.buffer.Write(b)
 }
 
 func (h *htmlResponseWriter) flush() {
-	// Ensure headers are written even if there's no body
+	// Initialize buffer if it doesn't exist (shouldn't happen, but be safe)
+	if h.buffer == nil {
+		h.buffer = &bytes.Buffer{}
+	}
+	
+	body := h.buffer.Bytes()
+	bodyModified := false
+	
+	// Check if this is HTML content and modify if needed
+	if len(body) > 0 && (bytes.Contains(body, []byte("<html")) || bytes.Contains(body, []byte("<!DOCTYPE"))) {
+		// Inject meta tag and script into <head>
+		injection := `<meta name="ingress-path" content="` + h.ingressPath + `"><script>window.__HASS_INGRESS_PATH__=window.__INGRESS_PATH__="` + h.ingressPath + `";</script>`
+		
+		// Try to inject before </head> (preferred location)
+		if bytes.Contains(body, []byte("</head>")) {
+			body = bytes.Replace(body, []byte("</head>"), []byte(injection+"</head>"), 1)
+			bodyModified = true
+		} else if bytes.Contains(body, []byte("<head>")) {
+			// If no closing tag, inject after opening head tag
+			body = bytes.Replace(body, []byte("<head>"), []byte("<head>"+injection), 1)
+			bodyModified = true
+		} else if bytes.Contains(body, []byte("</body>")) {
+			// Fallback: inject before </body>
+			body = bytes.Replace(body, []byte("</body>"), []byte(injection+"</body>"), 1)
+			bodyModified = true
+		} else {
+			// Last resort: inject after <html> tag
+			if bytes.Contains(body, []byte("<html")) {
+				htmlIndex := bytes.Index(body, []byte("<html"))
+				htmlEnd := bytes.Index(body[htmlIndex:], []byte(">"))
+				if htmlEnd > 0 {
+					insertPos := htmlIndex + htmlEnd + 1
+					newBody := make([]byte, 0, len(body)+len(injection))
+					newBody = append(newBody, body[:insertPos]...)
+					newBody = append(newBody, []byte(injection)...)
+					newBody = append(newBody, body[insertPos:]...)
+					body = newBody
+					bodyModified = true
+				}
+			}
+		}
+	}
+	
+	// Set Content-Length before writing headers (if body was modified)
+	if bodyModified && !h.headerWritten {
+		h.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	}
+	
+	// Write headers if not already written
 	if !h.headerWritten {
 		if h.statusCode == 0 {
 			h.statusCode = http.StatusOK
@@ -126,9 +180,9 @@ func (h *htmlResponseWriter) flush() {
 		h.headerWritten = true
 	}
 	
-	// If no buffer or empty buffer, nothing to write
-	if h.buffer == nil || h.buffer.Len() == 0 {
-		return
+	// Write the (possibly modified) body
+	if len(body) > 0 {
+		h.ResponseWriter.Write(body)
 	}
 	
 	body := h.buffer.Bytes()
@@ -163,12 +217,18 @@ func (h *htmlResponseWriter) flush() {
 			}
 		}
 		
-		// Update content length after modification
-		h.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		// Update content length - must be done before WriteHeader
+		// If headers already written, we can't change Content-Length
+		// In that case, the connection might fail, but we'll try anyway
+		if !h.headerWritten {
+			h.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		}
 	}
 	
 	// Write the (possibly modified) body
-	h.ResponseWriter.Write(body)
+	if len(body) > 0 {
+		h.ResponseWriter.Write(body)
+	}
 }
 
 type cookieResponseWriter struct {
