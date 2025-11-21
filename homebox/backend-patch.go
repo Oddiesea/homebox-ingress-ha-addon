@@ -231,51 +231,6 @@ func (h *htmlResponseWriter) flush() {
 	if len(body) > 0 {
 		h.ResponseWriter.Write(body)
 	}
-	
-	body := h.buffer.Bytes()
-	
-	// Check if this is HTML content
-	if bytes.Contains(body, []byte("<html")) || bytes.Contains(body, []byte("<!DOCTYPE")) {
-		// Inject meta tag and script into <head>
-		injection := `<meta name="ingress-path" content="` + h.ingressPath + `"><script>window.__HASS_INGRESS_PATH__=window.__INGRESS_PATH__="` + h.ingressPath + `";</script>`
-		
-		// Try to inject before </head> (preferred location)
-		if bytes.Contains(body, []byte("</head>")) {
-			body = bytes.Replace(body, []byte("</head>"), []byte(injection+"</head>"), 1)
-		} else if bytes.Contains(body, []byte("<head>")) {
-			// If no closing tag, inject after opening head tag
-			body = bytes.Replace(body, []byte("<head>"), []byte("<head>"+injection), 1)
-		} else if bytes.Contains(body, []byte("</body>")) {
-			// Fallback: inject before </body>
-			body = bytes.Replace(body, []byte("</body>"), []byte(injection+"</body>"), 1)
-		} else {
-			// Last resort: inject after <html> tag
-			if bytes.Contains(body, []byte("<html")) {
-				htmlIndex := bytes.Index(body, []byte("<html"))
-				htmlEnd := bytes.Index(body[htmlIndex:], []byte(">"))
-				if htmlEnd > 0 {
-					insertPos := htmlIndex + htmlEnd + 1
-					newBody := make([]byte, 0, len(body)+len(injection))
-					newBody = append(newBody, body[:insertPos]...)
-					newBody = append(newBody, []byte(injection)...)
-					newBody = append(newBody, body[insertPos:]...)
-					body = newBody
-				}
-			}
-		}
-		
-		// Update content length - must be done before WriteHeader
-		// If headers already written, we can't change Content-Length
-		// In that case, the connection might fail, but we'll try anyway
-		if !h.headerWritten {
-			h.Header().Set("Content-Length", strconv.Itoa(len(body)))
-		}
-	}
-	
-	// Write the (possibly modified) body
-	if len(body) > 0 {
-		h.ResponseWriter.Write(body)
-	}
 }
 
 type cookieResponseWriter struct {
