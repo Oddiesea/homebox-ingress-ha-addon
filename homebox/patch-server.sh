@@ -1,10 +1,10 @@
 #!/bin/sh
-# Patch server.go to add Ingress middleware support
+# Patch main.go to add Ingress middleware support for chi router
 
-SERVER_FILE="./app/api/server.go"
+SERVER_FILE="./app/api/main.go"
 
 if [ ! -f "$SERVER_FILE" ]; then
-    echo "Error: server.go not found at $SERVER_FILE"
+    echo "Error: main.go not found at $SERVER_FILE"
     exit 1
 fi
 
@@ -14,45 +14,50 @@ if grep -q "ingressPathMiddleware" "$SERVER_FILE"; then
     exit 0
 fi
 
-# Find the function that sets up routes (commonly setupRoutes, registerRoutes, or main setup function)
-# Look for common patterns:
-# 1. func setupRoutes(e *echo.Echo)
-# 2. func registerRoutes(e *echo.Echo) 
-# 3. Inside main() where routes are registered
+# Homebox uses chi router, not Echo
+# Pattern: router := chi.NewMux()
+# We need to add middleware after router creation but before router.Use(...)
 
-# Strategy: Find where routes start being registered and add middleware before that
-# Common patterns: e.GET, e.POST, e.Group, api := e.Group
-
-# Find the first route registration and add middleware before it
-if grep -q "e\.GET\|e\.POST\|e\.Group\|api.*:=.*e\.Group" "$SERVER_FILE"; then
-    # Add middleware before the first route
-    # Look for the pattern and insert before it
-    sed -i '0,/\(e\.GET\|e\.POST\|api.*:=.*e\.Group\|e\.Group\)/{
-        /\(e\.GET\|e\.POST\|api.*:=.*e\.Group\|e\.Group\)/i\
+# Find router := chi.NewMux() and add middleware right after it
+if grep -q "router := chi.NewMux()" "$SERVER_FILE"; then
+    # Add middleware after router creation, before router.Use
+    # Use a more specific pattern to insert after the router line but before router.Use
+    sed -i '/router := chi\.NewMux()/a\
+\
 	// Home Assistant Ingress middleware (patched)\
-	e.Use(ingressPathMiddleware)\
-	e.Use(cookieMiddleware)
-    }' "$SERVER_FILE" 2>/dev/null
-    
-    # Alternative: If using labstack/echo, look for e.GET or similar and add middleware right before
-    if ! grep -q "ingressPathMiddleware" "$SERVER_FILE"; then
-        # Try adding after echo.New() or similar initialization
-        sed -i '/e := echo\.New()\|echo\.New()\|router.*:=.*echo/a\
-	// Home Assistant Ingress middleware (patched)\
-	e.Use(ingressPathMiddleware)\
-	e.Use(cookieMiddleware)
+	router.Use(ingressPathMiddleware)\
+	router.Use(cookieMiddleware)
 ' "$SERVER_FILE"
+    
+    # Verify it was added
+    if grep -q "ingressPathMiddleware" "$SERVER_FILE"; then
+        echo "Server successfully patched for Ingress support"
+        exit 0
+    fi
+fi
+
+# Alternative: Try to find router.Use( and add before the first middleware
+if ! grep -q "ingressPathMiddleware" "$SERVER_FILE"; then
+    if grep -q "router\.Use(" "$SERVER_FILE"; then
+        # Insert before the first router.Use(
+        sed -i '0,/router\.Use(/{
+            /router\.Use(/i\
+	// Home Assistant Ingress middleware (patched)\
+	router.Use(ingressPathMiddleware)\
+	router.Use(cookieMiddleware)
+        }' "$SERVER_FILE"
     fi
 fi
 
 # Verify patch was applied
 if grep -q "ingressPathMiddleware" "$SERVER_FILE"; then
     echo "Server successfully patched for Ingress support"
+    exit 0
 else
-    echo "Warning: Could not automatically patch server.go"
-    echo "Manual patching may be required. Add these lines after router initialization:"
-    echo "  e.Use(ingressPathMiddleware)"
-    echo "  e.Use(cookieMiddleware)"
+    echo "Warning: Could not automatically patch main.go"
+    echo "Manual patching may be required. Add these lines after 'router := chi.NewMux()':"
+    echo "  router.Use(ingressPathMiddleware)"
+    echo "  router.Use(cookieMiddleware)"
     exit 1
 fi
 

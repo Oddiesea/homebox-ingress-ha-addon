@@ -37,13 +37,6 @@ A Home Assistant add-on for [Homebox](https://github.com/sysadminsmedia/homebox)
 
 The add-on uses the default Homebox configuration. All data is stored in `/config/homebox/` within your Home Assistant configuration directory.
 
-### Options
-
-Currently, no additional configuration options are required. The add-on uses sensible defaults:
-- Port: 7745 (used for ingress, not exposed externally)
-- Data directory: `/data` (mapped to `/config/homebox/`)
-
-
 ## Support
 
 - **Homebox Project**: [https://github.com/sysadminsmedia/homebox](https://github.com/sysadminsmedia/homebox)
@@ -56,5 +49,4 @@ This add-on is licensed under the AGPL-3.0 license, the same as Homebox itself.
 ## Credits
 
 - Homebox is developed by [sysadminsmedia](https://github.com/sysadminsmedia/homebox)
-- This add-on is maintained by [Oddiesea](https://github.com/Oddiesea)
 

@@ -103,7 +103,14 @@ COPY backend-patch.go ./app/api/ingress_patch.go
 COPY patch-server.sh ./patch-server.sh
 # Apply the patch to server.go to use the middleware
 # The patch script will try to add middleware, but may need adjustment based on server.go structure
-RUN chmod +x ./patch-server.sh && ./patch-server.sh || (echo "Warning: Auto-patch may have failed. Build continuing..." && echo "If API requests fail, check server.go structure and apply middleware manually")
+RUN chmod +x ./patch-server.sh && \
+    if ! ./patch-server.sh; then \
+        echo "Warning: Auto-patch may have failed. Attempting to verify server.go structure..." && \
+        echo "Checking server.go location..." && \
+        ls -la ./app/api/ 2>&1 || true && \
+        echo "If API requests fail, check server.go structure and apply middleware manually" && \
+        echo "Build will continue, but middleware may not be active"; \
+    fi
 
 # Clear old public files and copy new ones from frontend build
 RUN rm -rf ./app/api/public ./app/api/static/public
@@ -114,17 +121,20 @@ COPY --from=frontend-builder /app/.output/public ./app/api/static/public
 # Note: GOARCH is set as ENV above, read it dynamically
 RUN --mount=type=cache,target=/root/.cache/go-build \
     GOARCH_VALUE=$(cat /tmp/goarch.txt) && \
+    echo "Building for GOARCH=${GOARCH_VALUE}" && \
     if [ "${GOARCH_VALUE}" = "arm" ] || [ "${GOARCH_VALUE}" = "riscv64" ]; then \
+        echo "Building with nodynamic tag" && \
         CGO_ENABLED=0 GOOS=linux GOARCH=${GOARCH_VALUE} go build \
             -ldflags "-s -w" \
             -tags nodynamic \
             -o /go/bin/api \
-            -v ./app/api/*.go; \
+            -v ./app/api/*.go 2>&1 || (echo "Build failed, showing errors:" && go build -v ./app/api/*.go 2>&1 && exit 1); \
     else \
+        echo "Building without nodynamic tag" && \
         CGO_ENABLED=0 GOOS=linux GOARCH=${GOARCH_VALUE} go build \
             -ldflags "-s -w" \
             -o /go/bin/api \
-            -v ./app/api/*.go; \
+            -v ./app/api/*.go 2>&1 || (echo "Build failed, showing errors:" && go build -v ./app/api/*.go 2>&1 && exit 1); \
     fi
 
 # ==============================================================================

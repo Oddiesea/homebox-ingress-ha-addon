@@ -1,7 +1,7 @@
 // Patch for Home Assistant Ingress support
 // This middleware strips the Ingress path from requests and configures cookies
 
-package api
+package main
 
 import (
 	"bytes"
@@ -129,14 +129,17 @@ func (h *htmlResponseWriter) flush() {
 		// Inject meta tag and script into <head>
 		injection := `<meta name="ingress-path" content="` + h.ingressPath + `"><script>window.__HASS_INGRESS_PATH__=window.__INGRESS_PATH__="` + h.ingressPath + `";</script>`
 		
-		// Try to inject before </head>
+		// Try to inject before </head> (preferred location)
 		if bytes.Contains(body, []byte("</head>")) {
 			body = bytes.Replace(body, []byte("</head>"), []byte(injection+"</head>"), 1)
 		} else if bytes.Contains(body, []byte("<head>")) {
 			// If no closing tag, inject after opening head tag
 			body = bytes.Replace(body, []byte("<head>"), []byte("<head>"+injection), 1)
+		} else if bytes.Contains(body, []byte("</body>")) {
+			// Fallback: inject before </body>
+			body = bytes.Replace(body, []byte("</body>"), []byte(injection+"</body>"), 1)
 		} else {
-			// If no head tag, try to inject after <html> or <!DOCTYPE>
+			// Last resort: inject after <html> tag
 			if bytes.Contains(body, []byte("<html")) {
 				htmlIndex := bytes.Index(body, []byte("<html"))
 				htmlEnd := bytes.Index(body[htmlIndex:], []byte(">"))
@@ -150,16 +153,19 @@ func (h *htmlResponseWriter) flush() {
 				}
 			}
 		}
+		
+		// Update content length
+		h.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	}
 	
-	// Set content length
-	h.Header().Set("Content-Length", strconv.Itoa(len(body)))
-	
-	// Write status code
-	if h.statusCode == 0 {
-		h.statusCode = http.StatusOK
+	// Write status code (only if not already written)
+	if !h.headerWritten {
+		if h.statusCode == 0 {
+			h.statusCode = http.StatusOK
+		}
+		h.ResponseWriter.WriteHeader(h.statusCode)
+		h.headerWritten = true
 	}
-	h.ResponseWriter.WriteHeader(h.statusCode)
 	
 	// Write the modified body
 	h.ResponseWriter.Write(body)
