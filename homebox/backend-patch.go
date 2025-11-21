@@ -54,10 +54,8 @@ func ingressPathMiddleware(next http.Handler) http.Handler {
 				ingressPath:    normalizedIngressPath,
 			}
 			next.ServeHTTP(htmlRW, r)
-			// Ensure buffer is flushed after handler completes
-			if htmlRW.buffer != nil && htmlRW.buffer.Len() > 0 {
-				htmlRW.flush()
-			}
+			// Always flush buffer after handler completes (even if empty, to ensure headers are written)
+			htmlRW.flush()
 		} else {
 			next.ServeHTTP(w, r)
 		}
@@ -68,11 +66,12 @@ func ingressPathMiddleware(next http.Handler) http.Handler {
 func isHTMLRequest(r *http.Request) bool {
 	// Check if it's a GET request for the root or HTML file
 	path := r.URL.Path
+	// Accept requests that are likely HTML pages (root, index, or paths without extensions that aren't API or asset paths)
 	return r.Method == "GET" && (
 		path == "/" ||
 		path == "/index.html" ||
 		strings.HasSuffix(path, ".html") ||
-		(!strings.Contains(path, ".") && !strings.HasPrefix(path, "/api") && !strings.HasPrefix(path, "/_nuxt")))
+		(!strings.Contains(path, ".") && !strings.HasPrefix(path, "/api") && !strings.HasPrefix(path, "/_nuxt") && !strings.HasPrefix(path, "/swagger")))
 }
 
 // cookieMiddleware sets cookie attributes for Ingress
@@ -118,6 +117,16 @@ func (h *htmlResponseWriter) Write(b []byte) (int, error) {
 }
 
 func (h *htmlResponseWriter) flush() {
+	// Ensure headers are written even if there's no body
+	if !h.headerWritten {
+		if h.statusCode == 0 {
+			h.statusCode = http.StatusOK
+		}
+		h.ResponseWriter.WriteHeader(h.statusCode)
+		h.headerWritten = true
+	}
+	
+	// If no buffer or empty buffer, nothing to write
 	if h.buffer == nil || h.buffer.Len() == 0 {
 		return
 	}
@@ -154,20 +163,11 @@ func (h *htmlResponseWriter) flush() {
 			}
 		}
 		
-		// Update content length
+		// Update content length after modification
 		h.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	}
 	
-	// Write status code (only if not already written)
-	if !h.headerWritten {
-		if h.statusCode == 0 {
-			h.statusCode = http.StatusOK
-		}
-		h.ResponseWriter.WriteHeader(h.statusCode)
-		h.headerWritten = true
-	}
-	
-	// Write the modified body
+	// Write the (possibly modified) body
 	h.ResponseWriter.Write(body)
 }
 
