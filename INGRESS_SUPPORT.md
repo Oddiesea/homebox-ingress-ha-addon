@@ -128,11 +128,6 @@ const items = await useApiFetch('/api/items')
 - Adds `router.Use(ingressPathMiddleware)` and `router.Use(cookieMiddleware)`
 - Inserts middleware after router creation, before existing middleware
 
-**Important Notes**:
-- Homebox uses **chi router** (not Echo)
-- Main file is `main.go` (not `server.go`)
-- Package is `main` (not `api`)
-
 ### Build Files
 
 #### `Dockerfile`

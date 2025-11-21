@@ -23,7 +23,7 @@ func ingressPathMiddleware(next http.Handler) http.Handler {
 		// Always call next handler - don't block any requests
 		// If ingress path is present, we'll handle it, otherwise pass through
 		if ingressPath != "" {
-			// Normalize: ensure it ends with /
+			// Normalize: ensure it ends with / (for injection into HTML)
 			normalizedIngressPath = strings.TrimSuffix(ingressPath, "/") + "/"
 			
 			// Remove trailing slash for path stripping (we'll try both with and without)
@@ -36,16 +36,16 @@ func ingressPathMiddleware(next http.Handler) http.Handler {
 			
 			// Normalize both paths for comparison (remove trailing slashes)
 			normalizedRequestPath := strings.TrimSuffix(originalPath, "/")
-			normalizedIngressPath := strings.TrimSuffix(ingressPath, "/")
+			normalizedIngressPathForComparison := strings.TrimSuffix(ingressPath, "/")
 			
 			// Check if the request path starts with the ingress path
-			if normalizedRequestPath == normalizedIngressPath {
+			if normalizedRequestPath == normalizedIngressPathForComparison {
 				// Exact match - request is for the ingress root
 				r.URL.Path = "/"
-			} else if strings.HasPrefix(normalizedRequestPath, normalizedIngressPath+"/") {
+			} else if strings.HasPrefix(normalizedRequestPath, normalizedIngressPathForComparison+"/") {
 				// Request path starts with ingress path followed by /
 				// Strip the ingress path and the following /
-				r.URL.Path = strings.TrimPrefix(normalizedRequestPath, normalizedIngressPath+"/")
+				r.URL.Path = strings.TrimPrefix(normalizedRequestPath, normalizedIngressPathForComparison+"/")
 				if r.URL.Path == "" {
 					r.URL.Path = "/"
 				} else if !strings.HasPrefix(r.URL.Path, "/") {
