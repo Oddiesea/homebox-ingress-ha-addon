@@ -44,6 +44,10 @@ COPY --from=git-clone /tmp/homebox/frontend ./
 COPY --from=nuxt-config-patch /tmp/nuxt.config.ts ./nuxt.config.ts
 # Copy ingress-fix.js to public directory (will be included in build output)
 COPY ingress-fix.js ./public/ingress-fix.js
+# Copy ingress detection plugins, composables, and utilities
+COPY plugins/ ./plugins/
+COPY composables/ ./composables/
+COPY utils/ ./utils/
 # Copy node_modules from dependencies stage
 COPY --from=frontend-deps /app/node_modules ./node_modules
 # Build with relative base path "./" so assets work with any Ingress path
