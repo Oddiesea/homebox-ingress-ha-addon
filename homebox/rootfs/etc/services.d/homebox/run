@@ -1,0 +1,165 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant Community Add-on: Homebox
+# This runs Homebox using HA Ingress
+# ==============================================================================
+
+# Create data directory if it doesn't exist
+data_dir="/data"
+mkdir -p "${data_dir}" || bashio::exit.nok "Could not create data directory"
+
+# Set timezone if configured
+if bashio::config.has_value 'timezone'; then
+    TZ=$(bashio::config 'timezone')
+    export TZ
+    bashio::log.info "Timezone set to: ${TZ}"
+fi
+
+# Verify homebox binary exists and is executable
+if [ ! -f /usr/bin/homebox ]; then
+    bashio::log.error "Homebox binary not found at /usr/bin/homebox"
+    bashio::exit.nok "Homebox binary missing"
+fi
+
+if [ ! -x /usr/bin/homebox ]; then
+    bashio::log.error "Homebox binary is not executable"
+    bashio::exit.nok "Homebox binary not executable"
+fi
+
+# Get Ingress entry path from Home Assistant
+# This is the base path that Ingress uses (e.g., /api/hassio_ingress/<addon-id>/)
+ingress_entry=$(bashio::addon.ingress_entry 2>/dev/null || echo "")
+if [ -n "${ingress_entry}" ]; then
+    bashio::log.info "Ingress entry path: ${ingress_entry}"
+    # Set BASE_PATH environment variable for our custom-built Homebox
+    # This will be used by the Nuxt.js app (patched to read this at runtime)
+    export BASE_PATH="${ingress_entry}"
+    export NUXT_BASE_URL="${ingress_entry}"
+else
+    bashio::log.warning "Could not get Ingress entry path, using default '/'"
+    export BASE_PATH="/"
+fi
+
+# Start Homebox
+bashio::log.info "Starting Homebox..."
+bashio::log.info "Data directory: ${data_dir}"
+bashio::log.info "Port: 7745"
+bashio::log.info "Base path: ${BASE_PATH}"
+
+# Change to data directory so homebox creates database and files there
+cd "${data_dir}"
+
+# Build command-line arguments from configuration
+homebox_args=(
+    --web-host "0.0.0.0"
+    --web-port 7745
+    --mode production
+    --log-level info
+    --log-format text
+    --storage-prefix-path "${data_dir}/.data"
+    --database-sqlite-path "${data_dir}/.data/homebox.db?_pragma=busy_timeout=999&_pragma=journal_mode=WAL&_fk=1&_time_format=sqlite"
+    --options-allow-analytics false
+    --options-github-release-check false
+)
+
+# Add optional configuration options (use defaults from schema if not configured)
+bashio::log.info "Checking configuration options..."
+if bashio::config.has_value 'allow_registration'; then
+    allow_registration=$(bashio::config 'allow_registration')
+    bashio::log.info "Config option 'allow_registration' found: ${allow_registration}"
+else
+    allow_registration="true"
+    bashio::log.info "Config option 'allow_registration' not found, using default: ${allow_registration}"
+fi
+homebox_args+=(--options-allow-registration "${allow_registration}")
+bashio::log.info "Allow registration: ${allow_registration}"
+
+if bashio::config.has_value 'auto_increment_asset_id'; then
+    auto_increment=$(bashio::config 'auto_increment_asset_id')
+else
+    auto_increment="true"
+fi
+homebox_args+=(--options-auto-increment-asset-id "${auto_increment}")
+bashio::log.info "Auto increment asset ID: ${auto_increment}"
+
+if bashio::config.has_value 'web_max_upload_size'; then
+    max_upload=$(bashio::config 'web_max_upload_size')
+else
+    max_upload="10"
+fi
+# Max upload size is in MB, no unit suffix needed
+homebox_args+=(--web-max-upload-size "${max_upload}")
+bashio::log.info "Max upload size: ${max_upload} MB"
+
+if bashio::config.has_value 'web_read_timeout'; then
+    read_timeout=$(bashio::config 'web_read_timeout')
+else
+    read_timeout="10"
+fi
+# Homebox expects duration format (e.g., "10s", "30s")
+homebox_args+=(--web-read-timeout "${read_timeout}s")
+bashio::log.info "Read timeout: ${read_timeout} seconds"
+
+if bashio::config.has_value 'web_write_timeout'; then
+    write_timeout=$(bashio::config 'web_write_timeout')
+else
+    write_timeout="10"
+fi
+# Homebox expects duration format (e.g., "10s", "30s")
+homebox_args+=(--web-write-timeout "${write_timeout}s")
+bashio::log.info "Write timeout: ${write_timeout} seconds"
+
+if bashio::config.has_value 'web_idle_timeout'; then
+    idle_timeout=$(bashio::config 'web_idle_timeout')
+else
+    idle_timeout="30"
+fi
+# Homebox expects duration format (e.g., "10s", "30s")
+homebox_args+=(--web-idle-timeout "${idle_timeout}s")
+bashio::log.info "Idle timeout: ${idle_timeout} seconds"
+
+# Mailer configuration (only add if host is set and not empty)
+if bashio::config.has_value 'mailer_host'; then
+    mailer_host=$(bashio::config 'mailer_host')
+    if [ -n "${mailer_host}" ]; then
+        homebox_args+=(--mailer-host "${mailer_host}")
+        bashio::log.info "Mailer host: ${mailer_host}"
+        
+        if bashio::config.has_value 'mailer_port'; then
+            mailer_port=$(bashio::config 'mailer_port')
+        else
+            mailer_port="587"
+        fi
+        homebox_args+=(--mailer-port "${mailer_port}")
+        bashio::log.info "Mailer port: ${mailer_port}"
+        
+        if bashio::config.has_value 'mailer_username'; then
+            mailer_username=$(bashio::config 'mailer_username')
+            if [ -n "${mailer_username}" ]; then
+                homebox_args+=(--mailer-username "${mailer_username}")
+                bashio::log.info "Mailer username configured"
+            fi
+        fi
+        
+        if bashio::config.has_value 'mailer_password'; then
+            mailer_password=$(bashio::config 'mailer_password')
+            if [ -n "${mailer_password}" ]; then
+                homebox_args+=(--mailer-password "${mailer_password}")
+                bashio::log.info "Mailer password configured"
+            fi
+        fi
+        
+        if bashio::config.has_value 'mailer_from'; then
+            mailer_from=$(bashio::config 'mailer_from')
+            if [ -n "${mailer_from}" ]; then
+                homebox_args+=(--mailer-from "${mailer_from}")
+                bashio::log.info "Mailer from: ${mailer_from}"
+            fi
+        fi
+    fi
+fi
+
+# Run homebox - use exec to replace shell process with homebox
+# This ensures homebox runs as the service process and s6 can manage it properly
+exec /usr/bin/homebox "${homebox_args[@]}"
+

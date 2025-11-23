@@ -1,0 +1,133 @@
+import { defineNuxtConfig } from "nuxt/config";
+
+// Get base path from environment variable (for Home Assistant Ingress)
+// Use relative path "./" to work with any base path at runtime
+// The actual ingress path will be detected at runtime via X-Ingress-Path header
+// This is better for Ingress since we don't know the exact path at build time
+const basePath = process.env.BASE_PATH || process.env.NUXT_BASE_URL || './';
+
+// https://v3.nuxtjs.org/api/configuration/nuxt.config
+export default defineNuxtConfig({
+  ssr: false,
+
+  components: {
+    dirs: [],
+  },
+
+  build: {
+    transpile: ["vue-i18n"],
+  },
+
+  vite: {
+    // Use relative base path so assets work with any ingress path
+    base: basePath,
+  },
+
+  modules: [
+    "@nuxtjs/tailwindcss",
+    "@pinia/nuxt",
+    "@vueuse/nuxt",
+    "@vite-pwa/nuxt",
+    "unplugin-icons/nuxt",
+    "shadcn-nuxt",
+    "@nuxt/eslint",
+  ],
+
+  eslint: {
+    config: {},
+  },
+
+  nitro: {
+    devProxy: {
+      "/api": {
+        target: "http://localhost:7745/api",
+        ws: true,
+        changeOrigin: true,
+      },
+    },
+  },
+
+  // Set base URL for ingress support
+  // The ingress plugin will dynamically update the router base at runtime
+  app: {
+    baseURL: basePath,
+    cdnURL: basePath,
+    head: {
+      script: [
+        { src: "set-theme.js" },
+        // ingress-fix.js is now injected directly by the backend (backend-patch.go)
+        // This ensures it loads synchronously before Nuxt and avoids caching issues
+      ],
+    },
+  },
+
+  // Router base will be updated dynamically by the ingress plugin
+  router: {
+    options: {
+      base: basePath,
+    },
+  },
+
+  css: ["@/assets/css/main.css"],
+
+  pwa: {
+    workbox: {
+      navigateFallbackDenylist: [/^\/api/],
+      cleanupOutdatedCaches: true,
+      runtimeCaching: [
+        {
+          urlPattern: /^\/api/,
+          handler: "NetworkFirst",
+          method: "GET",
+          options: {
+            cacheName: "api-cache",
+            cacheableResponse: { statuses: [0, 200] },
+            expiration: { maxAgeSeconds: 60 * 60 * 24 },
+          },
+        },
+      ],
+    },
+    registerType: "autoUpdate",
+    injectRegister: "script",
+    injectManifest: {
+      swSrc: "sw.js",
+    },
+    devOptions: {
+      enabled: false,
+    },
+    manifest: {
+      name: "Homebox",
+      short_name: "Homebox",
+      description: "Home Inventory App",
+      theme_color: "#5b7f67",
+      start_url: `home`,
+      icons: [
+        {
+          src: "pwa-192x192.png",
+          sizes: "192x192",
+          type: "image/png",
+        },
+        {
+          src: "pwa-512x512.png",
+          sizes: "512x512",
+          type: "image/png",
+        },
+        {
+          src: "pwa-512x512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any maskable",
+        },
+      ],
+    },
+  },
+  postcss: {
+    plugins: {
+      tailwindcss: {},
+      autoprefixer: {},
+    },
+  },
+
+  compatibilityDate: "2024-11-29",
+});
+
