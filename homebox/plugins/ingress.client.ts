@@ -239,6 +239,187 @@ export default defineNuxtPlugin({
       Object.setPrototypeOf((window as any).WebSocket, originalWebSocket);
       Object.setPrototypeOf((window as any).WebSocket.prototype, originalWebSocket.prototype);
 
+      // Fix image and media element URLs
+      const fixElementUrl = (url: string): string => {
+        if (!url || typeof url !== 'string') {
+          return url;
+        }
+        
+        // Skip if already has ingress path
+        if (url.startsWith(normalizedPath)) {
+          return url;
+        }
+        
+        // Handle _nuxt paths
+        if (url.startsWith('/_nuxt/') || url.startsWith('./_nuxt/')) {
+          const pathToFix = url.startsWith('./') ? url.slice(2) : url.slice(1);
+          return normalizedPath + pathToFix;
+        }
+        
+        // Handle API paths (including /api/v1/ for attachments)
+        if (url.startsWith('/api/') && !url.startsWith('/api/hassio_ingress/')) {
+          return normalizedPath + url.slice(1);
+        }
+        
+        // Handle full URLs with same origin
+        try {
+          if (url.match(/^(https?):\/\//)) {
+            const urlObj = new URL(url, window.location.href);
+            const urlHost = urlObj.hostname + (urlObj.port ? ':' + urlObj.port : '');
+            const locationHost = window.location.hostname + (window.location.port ? ':' + window.location.port : '');
+            
+            if (urlHost === locationHost) {
+              const pathname = urlObj.pathname;
+              // Handle API paths
+              if (pathname.startsWith('/api/') && !pathname.startsWith('/api/hassio_ingress/') && !pathname.startsWith(normalizedPath)) {
+                const fixedPath = normalizedPath + pathname.slice(1);
+                return urlObj.origin + fixedPath + (urlObj.search || '') + (urlObj.hash || '');
+              }
+            }
+          }
+        } catch (e) {
+          // URL parsing failed, return original
+        }
+        
+        return url;
+      };
+
+      // Fix existing image and media elements
+      const fixMediaElements = () => {
+        const selectors = [
+          'img[src^="/api/"], img[src*="/api/v1/"]',
+          'source[src^="/api/"], source[src*="/api/v1/"]',
+          'video[src^="/api/"], video[src*="/api/v1/"]',
+          'audio[src^="/api/"], audio[src*="/api/v1/"]'
+        ];
+
+        selectors.forEach((selector) => {
+          document.querySelectorAll(selector).forEach((el) => {
+            const attr = 'src';
+            const path = el.getAttribute(attr);
+            if (path) {
+              const newPath = fixElementUrl(path);
+              if (newPath !== path) {
+                el.setAttribute(attr, newPath);
+              }
+            }
+            
+            // Also handle srcset for img tags
+            if (el.tagName === 'IMG' && el.hasAttribute('srcset')) {
+              const srcset = el.getAttribute('srcset');
+              if (srcset) {
+                const fixedSrcset = srcset.split(',').map((entry) => {
+                  const parts = entry.trim().split(/\s+/);
+                  const url = parts[0];
+                  const fixedUrl = fixElementUrl(url);
+                  if (fixedUrl !== url) {
+                    return fixedUrl + (parts.length > 1 ? ' ' + parts.slice(1).join(' ') : '');
+                  }
+                  return entry.trim();
+                }).join(', ');
+                if (fixedSrcset !== srcset) {
+                  el.setAttribute('srcset', fixedSrcset);
+                }
+              }
+            }
+          });
+        });
+      };
+
+      // Run immediately and on DOM ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fixMediaElements);
+      } else {
+        fixMediaElements();
+      }
+
+      // Watch for dynamically added images and media elements
+      new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === 1) { // Element node
+              const el = node as Element;
+              const tagName = el.tagName;
+              
+              // Handle img, source, video, audio tags
+              if ((tagName === 'IMG' || tagName === 'SOURCE' || tagName === 'VIDEO' || tagName === 'AUDIO') && el.hasAttribute('src')) {
+                const src = el.getAttribute('src');
+                if (src) {
+                  const newSrc = fixElementUrl(src);
+                  if (newSrc !== src) {
+                    el.setAttribute('src', newSrc);
+                  }
+                }
+              }
+              
+              // Also check for srcset on img tags
+              if (tagName === 'IMG' && el.hasAttribute('srcset')) {
+                const srcset = el.getAttribute('srcset');
+                if (srcset) {
+                  const fixedSrcset = srcset.split(',').map((entry) => {
+                    const parts = entry.trim().split(/\s+/);
+                    const url = parts[0];
+                    const fixedUrl = fixElementUrl(url);
+                    if (fixedUrl !== url) {
+                      return fixedUrl + (parts.length > 1 ? ' ' + parts.slice(1).join(' ') : '');
+                    }
+                    return entry.trim();
+                  }).join(', ');
+                  if (fixedSrcset !== srcset) {
+                    el.setAttribute('srcset', fixedSrcset);
+                  }
+                }
+              }
+            }
+          });
+        });
+      }).observe(document.body || document.documentElement, { 
+        childList: true, 
+        subtree: true, 
+        attributes: true, 
+        attributeFilter: ['src', 'srcset'] 
+      });
+      
+      // Also watch for attribute changes on existing elements
+      new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes') {
+            const el = mutation.target as Element;
+            const attrName = mutation.attributeName;
+            
+            if (attrName === 'src') {
+              const currentValue = el.getAttribute('src');
+              if (currentValue) {
+                const fixedValue = fixElementUrl(currentValue);
+                if (fixedValue !== currentValue) {
+                  el.setAttribute('src', fixedValue);
+                }
+              }
+            } else if (attrName === 'srcset' && el.tagName === 'IMG') {
+              const srcset = el.getAttribute('srcset');
+              if (srcset) {
+                const fixedSrcset = srcset.split(',').map((entry) => {
+                  const parts = entry.trim().split(/\s+/);
+                  const url = parts[0];
+                  const fixedUrl = fixElementUrl(url);
+                  if (fixedUrl !== url) {
+                    return fixedUrl + (parts.length > 1 ? ' ' + parts.slice(1).join(' ') : '');
+                  }
+                  return entry.trim();
+                }).join(', ');
+                if (fixedSrcset !== srcset) {
+                  el.setAttribute('srcset', fixedSrcset);
+                }
+              }
+            }
+          }
+        });
+      }).observe(document.body || document.documentElement, { 
+        attributes: true, 
+        attributeFilter: ['src', 'srcset'], 
+        subtree: true 
+      });
+
       // Ensure router base is set (in case it wasn't set earlier)
       try {
         const router = useRouter();

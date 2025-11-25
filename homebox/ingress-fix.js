@@ -42,29 +42,77 @@
 
   window.__ORIGINAL_PATHNAME__ = window.location.pathname;
 
+  // Helper to fix a single URL
+  function fixElementUrl(url) {
+    if (!url || typeof url !== 'string') {
+      return url;
+    }
+    const currentIngressPath = getIngressPath();
+    if (!currentIngressPath || currentIngressPath === '/') {
+      return url;
+    }
+    
+    // Skip if already has ingress path
+    if (url.startsWith(currentIngressPath)) {
+      return url;
+    }
+    
+    // Handle _nuxt paths
+    if (url.startsWith('/_nuxt/') || url.startsWith('./_nuxt/')) {
+      const pathToFix = url.startsWith('./') ? url.slice(2) : url.slice(1);
+      return currentIngressPath + pathToFix;
+    }
+    
+    // Handle API paths (including /api/v1/ for attachments)
+    if (url.startsWith('/api/') && !url.startsWith('/api/hassio_ingress/')) {
+      return currentIngressPath + url.slice(1);
+    }
+    
+    // Handle full URLs with same origin
+    try {
+      if (url.match(/^(https?):\/\//)) {
+        const urlObj = new URL(url, window.location.href);
+        const urlHost = urlObj.hostname + (urlObj.port ? ':' + urlObj.port : '');
+        const locationHost = window.location.hostname + (window.location.port ? ':' + window.location.port : '');
+        
+        if (urlHost === locationHost) {
+          const pathname = urlObj.pathname;
+          // Handle API paths
+          if (pathname.startsWith('/api/') && !pathname.startsWith('/api/hassio_ingress/') && !pathname.startsWith(currentIngressPath)) {
+            const fixedPath = currentIngressPath + pathname.slice(1);
+            return urlObj.origin + fixedPath + (urlObj.search || '') + (urlObj.hash || '');
+          }
+        }
+      }
+    } catch (e) {
+      // URL parsing failed, return original
+    }
+    
+    return url;
+  }
+
   // Fix asset paths using ingress path
   function fixPaths() {
     // Fix existing script and link tags with absolute paths
     const selectors = [
-      'script[src^="/_nuxt/"]',
-      'link[href^="/_nuxt/"]',
-      'script[src^="./_nuxt/"]',
-      'link[href^="./_nuxt/"]'
+      'script[src^="/_nuxt/"], script[src^="./_nuxt/"]',
+      'link[href^="/_nuxt/"], link[href^="./_nuxt/"]',
+      'img[src^="/api/"], img[src*="/api/v1/"]',
+      'source[src^="/api/"], source[src*="/api/v1/"]',
+      'video[src^="/api/"], video[src*="/api/v1/"]',
+      'audio[src^="/api/"], audio[src*="/api/v1/"]'
     ];
 
     selectors.forEach(function(selector) {
       document.querySelectorAll(selector).forEach(function(el) {
-        const attr = el.tagName === 'SCRIPT' ? 'src' : 'href';
+        let attr = 'src';
+        if (el.tagName === 'LINK') {
+          attr = 'href';
+        }
+        
         const path = el.getAttribute(attr);
         if (path) {
-          // Handle both absolute and relative paths
-          let newPath = path;
-          if (path.startsWith('/_nuxt/')) {
-            newPath = ingressPath + path.slice(1); // Remove leading /
-          } else if (path.startsWith('./_nuxt/')) {
-            newPath = ingressPath + path.slice(2); // Remove ./
-          }
-
+          const newPath = fixElementUrl(path);
           if (newPath !== path) {
             el.setAttribute(attr, newPath);
           }
@@ -80,39 +128,93 @@
     fixPaths();
   }
 
-  // Watch for dynamically added scripts/links
+  // Watch for dynamically added scripts/links/images
   new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
       mutation.addedNodes.forEach(function(node) {
         if (node.nodeType === 1) { // Element node
-          if (node.nodeName === 'SCRIPT' && node.src) {
-            if (node.src.includes('/_nuxt/') || node.src.includes('./_nuxt/')) {
-              let newSrc = node.src;
-              if (node.src.startsWith('/_nuxt/')) {
-                newSrc = ingressPath + node.src.slice(1);
-              } else if (node.src.includes('./_nuxt/')) {
-                const relativePath = node.src.split('./_nuxt/')[1];
-                newSrc = ingressPath + '_nuxt/' + relativePath;
-              }
+          const tagName = node.nodeName;
+          
+          // Handle script tags
+          if (tagName === 'SCRIPT' && node.src) {
+            const newSrc = fixElementUrl(node.src);
+            if (newSrc !== node.src) {
               node.src = newSrc;
             }
           }
-          if (node.nodeName === 'LINK' && node.href) {
-            if (node.href.includes('/_nuxt/') || node.href.includes('./_nuxt/')) {
-              let newHref = node.href;
-              if (node.href.startsWith('/_nuxt/')) {
-                newHref = ingressPath + node.href.slice(1);
-              } else if (node.href.includes('./_nuxt/')) {
-                const relativePath = node.href.split('./_nuxt/')[1];
-                newHref = ingressPath + '_nuxt/' + relativePath;
-              }
+          
+          // Handle link tags
+          if (tagName === 'LINK' && node.href) {
+            const newHref = fixElementUrl(node.href);
+            if (newHref !== node.href) {
               node.href = newHref;
+            }
+          }
+          
+          // Handle img, source, video, audio tags
+          if ((tagName === 'IMG' || tagName === 'SOURCE' || tagName === 'VIDEO' || tagName === 'AUDIO') && node.src) {
+            const newSrc = fixElementUrl(node.src);
+            if (newSrc !== node.src) {
+              node.src = newSrc;
+            }
+          }
+          
+          // Also check for srcset on img tags
+          if (tagName === 'IMG' && node.srcset) {
+            const srcset = node.srcset;
+            const fixedSrcset = srcset.split(',').map(function(entry) {
+              const parts = entry.trim().split(/\s+/);
+              const url = parts[0];
+              const fixedUrl = fixElementUrl(url);
+              if (fixedUrl !== url) {
+                return fixedUrl + (parts.length > 1 ? ' ' + parts.slice(1).join(' ') : '');
+              }
+              return entry.trim();
+            }).join(', ');
+            if (fixedSrcset !== srcset) {
+              node.srcset = fixedSrcset;
             }
           }
         }
       });
     });
-  }).observe(document.head, { childList: true, subtree: true });
+  }).observe(document.body || document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'href', 'srcset'] });
+  
+  // Also watch for attribute changes on existing elements
+  new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      if (mutation.type === 'attributes') {
+        const el = mutation.target;
+        const attrName = mutation.attributeName;
+        
+        if (attrName === 'src' || attrName === 'href') {
+          const currentValue = el.getAttribute(attrName);
+          if (currentValue) {
+            const fixedValue = fixElementUrl(currentValue);
+            if (fixedValue !== currentValue) {
+              el.setAttribute(attrName, fixedValue);
+            }
+          }
+        } else if (attrName === 'srcset' && el.tagName === 'IMG') {
+          const srcset = el.getAttribute('srcset');
+          if (srcset) {
+            const fixedSrcset = srcset.split(',').map(function(entry) {
+              const parts = entry.trim().split(/\s+/);
+              const url = parts[0];
+              const fixedUrl = fixElementUrl(url);
+              if (fixedUrl !== url) {
+                return fixedUrl + (parts.length > 1 ? ' ' + parts.slice(1).join(' ') : '');
+              }
+              return entry.trim();
+            }).join(', ');
+            if (fixedSrcset !== srcset) {
+              el.setAttribute('srcset', fixedSrcset);
+            }
+          }
+        }
+      }
+    });
+  }).observe(document.body || document.documentElement, { attributes: true, attributeFilter: ['src', 'href', 'srcset'], subtree: true });
 
   // Helper function to fix URLs for fetch/XHR requests
   function fixRequestUrl(url) {
